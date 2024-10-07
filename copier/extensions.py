@@ -18,7 +18,6 @@ class YieldExtension(Extension):
     def parse(self, parser):
         """パーサー."""
         lineno = next(parser.stream).lineno
-
         # 変数名を取得
         single_var = parser.parse_expression()
 
@@ -26,35 +25,21 @@ class YieldExtension(Extension):
         parser.stream.expect("name:from")
 
         # リストを取得
-        # looped_var = parser.parse_expression()
+        looped_var = parser.parse_expression()
 
         # タグのボディを取得
         body = parser.parse_statements(["name:endyield"], drop_needle=True)
 
-        node = nodes.OverlayScope(lineno=lineno)
-        node.body = list(body)
-        node.context = self.call_method(
-            "_yield_support", [nodes.Const(single_var.name)]
-        )
+        node = nodes.Scope(lineno=lineno)
+        node.body = [
+            nodes.Assign(
+                nodes.Name(single_var.name, "store"),
+                nodes.Getitem(
+                    looped_var,
+                    nodes.Const(0),  # 0,1,2 ... to slice thelist
+                    "load",
+                ),
+            )
+        ] + list(body)
+
         return node
-
-    def _yield_support(self, single_var):
-        return {single_var: 1}
-        # result = []
-        # for item in looped_var:
-        #    result.append(caller(**{single_var.name: item}))
-        # return "".join(result)
-
-        # if self.environment.yield_state:
-        #     context[single_var.name] = self.environment.yield_state.pop(0)
-
-        # if not looped_var:
-        #     raise ValueError("looped_var is empty")
-
-        # if not self.environment.yield_state:
-        #     self.environment.yield_state = looped_var
-        #     return ""
-        # else:
-        #     res = caller(single_var=self.environment.yield_state.pop(0))
-
-        # return res

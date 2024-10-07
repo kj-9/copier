@@ -12,7 +12,7 @@ def test_render_items(tmp_path_factory):
                 _items: "test"
             """,
             src
-            / "{% yield single_var from looped_var %}{{ single_var }}{{hello}}.txt{% endyield %}": "This is {{ _item }}. Hello {{hello}}",
+            / "{% yield single_var from looped_var %}{{ single_var }}{{hello}}.txt{% endyield %}{{looped_var}}hey": "This is {{ _item }}. Hello {{hello}}",
         }
     )
     # No warnings, because template is explicit
