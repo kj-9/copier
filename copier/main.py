@@ -44,6 +44,7 @@ from .errors import (
     UnsafeTemplateError,
     UserMessageError,
 )
+from .extensions import YieldExtension
 from .subproject import Subproject
 from .template import Task, Template
 from .tools import (
@@ -549,6 +550,7 @@ class Worker:
         loader = FileSystemLoader(paths)
         default_extensions = [
             "jinja2_ansible_filters.AnsibleCoreFiltersExtension",
+            YieldExtension,
         ]
         extensions = default_extensions + list(self.template.jinja_extensions)
         # We want to minimize the risk of hidden malware in the templates
