@@ -13,7 +13,7 @@ class YieldExtension(Extension):
         """コンストラクタ."""
         super().__init__(environment)
 
-        environment.extend(yield_state=None)
+        environment.extend(yield_state=dict())
 
     def parse(self, parser):
         """パーサー."""
@@ -30,16 +30,47 @@ class YieldExtension(Extension):
         # タグのボディを取得
         body = parser.parse_statements(["name:endyield"], drop_needle=True)
 
-        node = nodes.Scope(lineno=lineno)
-        node.body = [
-            nodes.Assign(
-                nodes.Name(single_var.name, "store"),
-                nodes.Getitem(
-                    looped_var,
-                    nodes.Const(0),  # 0,1,2 ... to slice thelist
-                    "load",
-                ),
-            )
-        ] + list(body)
+        yield_state = self.environment.yield_state
+        if yield_state:
+            node = nodes.Scope(lineno=lineno)
 
-        return node
+            node.body = (
+                [
+                    nodes.Assign(
+                        nodes.Name(single_var.name, "store"),
+                        nodes.Getitem(
+                            looped_var,
+                            nodes.Const(yield_state),  # 0,1,2 ... to slice thelist
+                            "load",
+                        ),
+                    )
+                ]
+                # + list(body)
+                + [
+                    nodes.CallBlock(
+                        self.call_method("_yield_support", [looped_var]),
+                        [],
+                        [],
+                        body,
+                    )
+                ]
+            )
+
+            return node
+
+        else:
+            return nodes.CallBlock(
+                self.call_method("_yield_support", [looped_var]),
+                [],
+                [],
+                body,
+            )
+
+    def _yield_support(self, looped_var, caller):
+        if not self.environment.yield_state:
+            self.environment.yield_state["next"] = 0
+            self.environment.yield_state["len"] = len(looped_var)
+        else:
+            self.environment.yield_state["next"] += 1
+
+        return caller()

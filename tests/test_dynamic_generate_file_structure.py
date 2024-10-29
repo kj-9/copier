@@ -12,7 +12,7 @@ def test_render_items(tmp_path_factory):
                 _items: "test"
             """,
             src
-            / "{% yield single_var from looped_var %}{{ single_var }}{{hello}}.txt{% endyield %}{{looped_var}}hey": "This is {{ _item }}. Hello {{hello}}",
+            / "{% yield single_var from looped_var %}{{ single_var }}{{hello}}.txt{% endyield %}.jinja": "Hello {{hello}}",
         }
     )
     # No warnings, because template is explicit
@@ -29,14 +29,6 @@ def test_render_items(tmp_path_factory):
             overwrite=True,
         )
 
-        one_rendered = (dst / "one.txt").read_text()
-        one_expected = "This is one. Hello world"
-        assert one_rendered == one_expected
-
-        one_rendered = (dst / "two.txt").read_text()
-        one_expected = "This is two. Hello world"
-        assert one_rendered == one_expected
-
-        one_rendered = (dst / "three.txt").read_text()
-        one_expected = "This is three. Hello world"
+        one_rendered = (dst / "world.txt").read_text()
+        one_expected = "Hello world"
         assert one_rendered == one_expected

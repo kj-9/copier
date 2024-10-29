@@ -1,4 +1,5 @@
 """Main functions and classes, used to generate or update projects."""
+
 from __future__ import annotations
 
 import os
@@ -214,14 +215,12 @@ class Worker:
         return self
 
     @overload
-    def __exit__(self, type: None, value: None, traceback: None) -> None:
-        ...
+    def __exit__(self, type: None, value: None, traceback: None) -> None: ...
 
     @overload
     def __exit__(
         self, type: type[BaseException], value: BaseException, traceback: TracebackType
-    ) -> None:
-        ...
+    ) -> None: ...
 
     def __exit__(
         self,
@@ -495,7 +494,9 @@ class Worker:
                 # Try to validate the answer value if the question has a
                 # validator.
                 if err_msg := question.validate_answer(answer):
-                    raise ValueError(f"Validation error for question '{var_name}': {err_msg}")
+                    raise ValueError(
+                        f"Validation error for question '{var_name}': {err_msg}"
+                    )
                 # At this point, the answer value is valid. Do not ask the
                 # question again, but set answer as the user's answer instead.
                 result.user[var_name] = answer
@@ -716,6 +717,11 @@ class Worker:
         if not self.pretend and self._render_allowed(dst_relpath, is_dir=True):
             dst_abspath = self.subproject.local_abspath / dst_relpath
             dst_abspath.mkdir(parents=True, exist_ok=True)
+
+                if self.jinja_env.yield_state:
+                    for i in range(self.jinja_env.yield_state["len"]):
+                        self.jinja_env.yield_state["i"] = i
+                        self._render_file(file)
 
     def _render_path(self, relpath: Path) -> Path | None:
         """Render one relative path.
