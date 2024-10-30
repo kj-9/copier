@@ -32,33 +32,10 @@ class YieldExtension(Extension):
 
         yield_state = self.environment.yield_state
         if yield_state:
-            node = nodes.Scope(lineno=lineno)
-
-            node.body = (
-                [
-                    nodes.Assign(
-                        nodes.Name(single_var.name, "store"),
-                        nodes.Getitem(
-                            looped_var,
-                            nodes.Const(yield_state),  # 0,1,2 ... to slice thelist
-                            "load",
-                        ),
-                    )
-                ]
-                # + list(body)
-                + [
-                    nodes.CallBlock(
-                        self.call_method("_yield_support", [looped_var]),
-                        [],
-                        [],
-                        body,
-                    )
-                ]
-            )
-
-            return node
+            return body
 
         else:
+            self.environment.yield_state["single_var"] = single_var.name
             return nodes.CallBlock(
                 self.call_method("_yield_support", [looped_var]),
                 [],
@@ -67,10 +44,6 @@ class YieldExtension(Extension):
             )
 
     def _yield_support(self, looped_var, caller):
-        if not self.environment.yield_state:
-            self.environment.yield_state["next"] = 0
-            self.environment.yield_state["len"] = len(looped_var)
-        else:
-            self.environment.yield_state["next"] += 1
+        self.environment.yield_state["looped_var"] = looped_var
 
         return caller()

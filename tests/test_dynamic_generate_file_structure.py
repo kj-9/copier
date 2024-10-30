@@ -29,6 +29,8 @@ def test_render_items(tmp_path_factory):
             overwrite=True,
         )
 
-        one_rendered = (dst / "world.txt").read_text()
-        one_expected = "Hello world"
+        for i in ["one", "two", "three"]:
+            one_rendered = (dst / f"{i}world.txt").read_text()
+            one_expected = "Hello world"
+            assert one_rendered == one_expected
         assert one_rendered == one_expected

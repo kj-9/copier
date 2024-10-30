@@ -609,17 +609,19 @@ class Worker:
         for src in scantree(str(self.template_copy_root), follow_symlinks):
             src_abspath = Path(src.path)
             src_relpath = Path(src_abspath).relative_to(self.template.local_abspath)
-            dst_relpath = self._render_path(
+            dst_relpaths = self._render_path(
                 Path(src_abspath).relative_to(self.template_copy_root)
             )
-            if dst_relpath is None or self.match_exclude(dst_relpath):
-                continue
-            if src.is_symlink() and self.template.preserve_symlinks:
-                self._render_symlink(src_relpath, dst_relpath)
-            elif src.is_dir(follow_symlinks=follow_symlinks):
-                self._render_folder(dst_relpath)
-            else:
-                self._render_file(src_relpath, dst_relpath)
+
+            for dst_relpath in dst_relpaths:
+                if self.match_exclude(dst_relpath):
+                    continue
+                if src.is_symlink() and self.template.preserve_symlinks:
+                    self._render_symlink(src_relpath, dst_relpath)
+                elif src.is_dir(follow_symlinks=follow_symlinks):
+                    self._render_folder(dst_relpath)
+                else:
+                    self._render_file(src_relpath, dst_relpath)
 
     def _render_file(self, src_relpath: Path, dst_relpath: Path) -> None:
         """Render one file.
@@ -718,12 +720,7 @@ class Worker:
             dst_abspath = self.subproject.local_abspath / dst_relpath
             dst_abspath.mkdir(parents=True, exist_ok=True)
 
-                if self.jinja_env.yield_state:
-                    for i in range(self.jinja_env.yield_state["len"]):
-                        self.jinja_env.yield_state["i"] = i
-                        self._render_file(file)
-
-    def _render_path(self, relpath: Path) -> Path | None:
+    def _render_path(self, relpath: Path) -> [Path] | None:
         """Render one relative path.
 
         Args:
@@ -750,19 +747,30 @@ class Worker:
             if str(self.answers_relpath) == part:
                 part = Path(part).name
             rendered_parts.append(part)
-        result = Path(*rendered_parts)
+
+        # Create Path objects for each combination
+        from itertools import product
+
+        rendered_parts = [
+            part if isinstance(part, (list, set)) else [part] for part in rendered_parts
+        ]
+
+        combinations = product(*rendered_parts)
+        results = [Path(*combination) for combination in combinations]
+        # result = Path(*rendered_parts)
+
         if not is_template:
-            templated_sibling = (
-                self.template.local_abspath
-                / f"{result}{self.template.templates_suffix}"
-            )
-            if templated_sibling.exists():
-                return None
-        return result
+            results = [
+                result
+                for result in results
+                if (self.template.local_abspath / result).exists()
+            ]
+
+        return results
 
     def _render_string(
         self, string: str, extra_context: AnyByStrDict | None = None
-    ) -> str:
+    ) -> str | [str]:
         """Render one templated string.
 
         Args:
@@ -773,7 +781,24 @@ class Worker:
                 Additional variables to use for rendering the template.
         """
         tpl = self.jinja_env.from_string(string)
-        return tpl.render(**self._render_context(), **(extra_context or {}))
+        rendered = tpl.render(**self._render_context(), **(extra_context or {}))
+
+        if self.jinja_env.yield_state:
+            rendered = set()
+            for i in self.jinja_env.yield_state["looped_var"]:
+                rendered.add(
+                    tpl.render(
+                        **self._render_context(),
+                        **(extra_context or {}),
+                        **{self.jinja_env.yield_state["single_var"]: i},
+                    )
+                )
+
+            self.jinja_env.yield_state = {}
+            return rendered
+
+        else:
+            return rendered
 
     def _render_value(
         self, value: _T, extra_context: AnyByStrDict | None = None
@@ -1122,7 +1147,8 @@ class Worker:
                         # before storing the file name for marking it as unmerged after the loop.
                         with open(fname) as conflicts_candidate:
                             if any(
-                                line.rstrip() in {"<<<<<<< before updating", ">>>>>>> after updating"}
+                                line.rstrip()
+                                in {"<<<<<<< before updating", ">>>>>>> after updating"}
                                 for line in conflicts_candidate
                             ):
                                 conflicted.append(fname)
