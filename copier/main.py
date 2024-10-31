@@ -1,4 +1,5 @@
 """Main functions and classes, used to generate or update projects."""
+
 from __future__ import annotations
 
 import os
@@ -44,6 +45,7 @@ from .errors import (
     UnsafeTemplateError,
     UserMessageError,
 )
+from .extensions import YieldExtension
 from .subproject import Subproject
 from .template import Task, Template
 from .tools import (
@@ -213,14 +215,12 @@ class Worker:
         return self
 
     @overload
-    def __exit__(self, type: None, value: None, traceback: None) -> None:
-        ...
+    def __exit__(self, type: None, value: None, traceback: None) -> None: ...
 
     @overload
     def __exit__(
         self, type: type[BaseException], value: BaseException, traceback: TracebackType
-    ) -> None:
-        ...
+    ) -> None: ...
 
     def __exit__(
         self,
@@ -494,7 +494,9 @@ class Worker:
                 # Try to validate the answer value if the question has a
                 # validator.
                 if err_msg := question.validate_answer(answer):
-                    raise ValueError(f"Validation error for question '{var_name}': {err_msg}")
+                    raise ValueError(
+                        f"Validation error for question '{var_name}': {err_msg}"
+                    )
                 # At this point, the answer value is valid. Do not ask the
                 # question again, but set answer as the user's answer instead.
                 result.user[var_name] = answer
@@ -549,6 +551,7 @@ class Worker:
         loader = FileSystemLoader(paths)
         default_extensions = [
             "jinja2_ansible_filters.AnsibleCoreFiltersExtension",
+            YieldExtension,
         ]
         extensions = default_extensions + list(self.template.jinja_extensions)
         # We want to minimize the risk of hidden malware in the templates
@@ -606,17 +609,19 @@ class Worker:
         for src in scantree(str(self.template_copy_root), follow_symlinks):
             src_abspath = Path(src.path)
             src_relpath = Path(src_abspath).relative_to(self.template.local_abspath)
-            dst_relpath = self._render_path(
+            dst_relpaths = self._render_path(
                 Path(src_abspath).relative_to(self.template_copy_root)
             )
-            if dst_relpath is None or self.match_exclude(dst_relpath):
-                continue
-            if src.is_symlink() and self.template.preserve_symlinks:
-                self._render_symlink(src_relpath, dst_relpath)
-            elif src.is_dir(follow_symlinks=follow_symlinks):
-                self._render_folder(dst_relpath)
-            else:
-                self._render_file(src_relpath, dst_relpath)
+
+            for dst_relpath in dst_relpaths:
+                if self.match_exclude(dst_relpath):
+                    continue
+                if src.is_symlink() and self.template.preserve_symlinks:
+                    self._render_symlink(src_relpath, dst_relpath)
+                elif src.is_dir(follow_symlinks=follow_symlinks):
+                    self._render_folder(dst_relpath)
+                else:
+                    self._render_file(src_relpath, dst_relpath)
 
     def _render_file(self, src_relpath: Path, dst_relpath: Path) -> None:
         """Render one file.
@@ -715,7 +720,45 @@ class Worker:
             dst_abspath = self.subproject.local_abspath / dst_relpath
             dst_abspath.mkdir(parents=True, exist_ok=True)
 
-    def _render_path(self, relpath: Path) -> Path | None:
+    def _render_parts(
+        self,
+        parts: tuple[str],
+        rendered_parts: tuple[str],
+        context: AnyByStrDict = None,
+    ) -> tuple[tuple[str]]:
+        if not parts:
+            return (rendered_parts,)
+
+        part = parts[0]
+        parts = parts[1:]
+
+        # Skip folder if any part is rendered as an empty string
+        rendered_part = self._render_string(part, extra_context=context)
+
+        yield_context = self.jinja_env.yield_context.copy()
+        if yield_context:
+            keys = list(yield_context.keys())
+            key = keys[0]
+            parts_yields = tuple()
+            for v in yield_context[key]:
+                # join the `context`` with the current `yield_context`
+                new_context = {**(context or {}), **{key: v}}
+                rendered_part = self._render_string(part, extra_context=new_context)
+                self.jinja_env.yield_context = {}
+
+                parts_yield = self._render_parts(
+                    parts, rendered_parts + (rendered_part,), new_context
+                )
+                parts_yields += parts_yield
+
+            return parts_yields
+
+        # if root, then append to the output
+
+        else:
+            return self._render_parts(parts, rendered_parts + (rendered_part,), context)
+
+    def _render_path(self, relpath: Path) -> [Path]:
         """Render one relative path.
 
         Args:
@@ -728,29 +771,37 @@ class Worker:
         )
         # With an empty suffix, the templated sibling always exists.
         if templated_sibling.exists() and self.template.templates_suffix:
-            return None
+            return []
         if self.template.templates_suffix and is_template:
             relpath = relpath.with_suffix("")
-        rendered_parts = []
-        for part in relpath.parts:
-            # Skip folder if any part is rendered as an empty string
-            part = self._render_string(part)
-            if not part:
-                return None
-            # {{ _copier_conf.answers_file }} becomes the full path; in that case,
-            # restore part to be just the end leaf
-            if str(self.answers_relpath) == part:
-                part = Path(part).name
-            rendered_parts.append(part)
-        result = Path(*rendered_parts)
+        rendered_parts = self._render_parts(relpath.parts, tuple())
+
+        if not rendered_parts:
+            return []
+
+        # {{ _copier_conf.answers_file }} becomes the full path; in that case,
+        # restore part to be just the end leaf
+        # if str(self.answers_relpath) == rendered_part:
+        #    rendered_part = Path(rendered_part).name
+
+        # rendered_parts.append([rendered_part])
+
+        # Create Path objects for each combination
+        # combinations = product(*rendered_parts)
+        results = [Path(*rendered_part) for rendered_part in rendered_parts]
+        # result = Path(*rendered_parts)
+
         if not is_template:
-            templated_sibling = (
-                self.template.local_abspath
-                / f"{result}{self.template.templates_suffix}"
-            )
-            if templated_sibling.exists():
-                return None
-        return result
+            results = [
+                result
+                for result in results
+                if not (
+                    self.template.local_abspath
+                    / f"{result}{self.template.templates_suffix}"
+                ).exists()
+            ]
+
+        return results
 
     def _render_string(
         self, string: str, extra_context: AnyByStrDict | None = None
@@ -1114,7 +1165,8 @@ class Worker:
                         # before storing the file name for marking it as unmerged after the loop.
                         with open(fname) as conflicts_candidate:
                             if any(
-                                line.rstrip() in {"<<<<<<< before updating", ">>>>>>> after updating"}
+                                line.rstrip()
+                                in {"<<<<<<< before updating", ">>>>>>> after updating"}
                                 for line in conflicts_candidate
                             ):
                                 conflicted.append(fname)
