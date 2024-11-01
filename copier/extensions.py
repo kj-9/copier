@@ -2,6 +2,7 @@
 
 from jinja2 import nodes
 from jinja2.environment import Environment
+from jinja2.exceptions import UndefinedError
 from jinja2.ext import Extension
 
 
@@ -44,4 +45,11 @@ class YieldExtension(Extension):
     def _yield_support(self, looped_var, single_var_name, caller):
         self.environment.yield_context = {single_var_name: looped_var}
 
-        return caller()
+        try:
+            res = caller()
+
+        # Can be raised if `dict.attr` is used before context is set
+        except UndefinedError:
+            res = ""
+
+        return res
