@@ -634,6 +634,8 @@ class Worker:
             dst_relpath:
                 File to be created. It must be a path relative to the subproject
                 root.
+            extra_context:
+                Additional variables to use for rendering the template.
         """
         # TODO Get from main.render_file()
         assert not src_relpath.is_absolute()
