@@ -732,10 +732,10 @@ class Worker:
 
     def _render_parts(
         self,
-        parts: tuple[str],
-        rendered_parts: tuple[str],
-        context: AnyByStrDict = None,
-    ) -> tuple[tuple[str]]:
+        parts: tuple[str, ...],
+        rendered_parts: tuple[str, ...],
+        context: AnyByStrDict,
+    ) -> tuple[tuple[str], ...] | None:
         if not parts:
             return (rendered_parts,)
 
@@ -748,7 +748,8 @@ class Worker:
         if yield_context:
             keys = list(yield_context.keys())
             key = keys[0]
-            yielded_parts = tuple()
+            yielded_parts: tuple[tuple[str], ...] = ()
+
             for v in yield_context[key]:
                 # join the `context`` with the current `yield_context`
                 new_context = {**(context or {}), **{key: v}}
@@ -777,7 +778,7 @@ class Worker:
 
         return self._render_parts(parts, rendered_parts + (rendered_part,), context)
 
-    def _render_path(self, relpath: Path) -> [Path]:
+    def _render_path(self, relpath: Path) -> list[Path]:
         """Render one relative path.
 
         Args:
@@ -793,7 +794,7 @@ class Worker:
             return []
         if self.template.templates_suffix and is_template:
             relpath = relpath.with_suffix("")
-        rendered_parts = self._render_parts(relpath.parts, tuple())
+        rendered_parts = self._render_parts(relpath.parts, tuple(), {})
 
         if not rendered_parts:
             return []
