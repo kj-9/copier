@@ -1,9 +1,12 @@
 """Jinja2 extension to add to the Jinja2 environment."""
 
+from typing import Any, Callable, Sequence
+
 from jinja2 import nodes
 from jinja2.environment import Environment
 from jinja2.exceptions import UndefinedError
 from jinja2.ext import Extension
+from jinja2.parser import Parser
 
 
 class YieldExtension(Extension):
@@ -39,14 +42,14 @@ class YieldExtension(Extension):
 
         environment.extend(yield_context=dict())
 
-    def parse(self, parser):
+    def parse(self, parser: Parser) -> nodes.Node:
         """Parse the `yield` tag."""
         lineno = next(parser.stream).lineno
 
-        single_var = parser.parse_expression()
+        single_var: nodes.Name = parser.parse_assign_target(name_only=True)
         parser.stream.expect("name:from")
         looped_var = parser.parse_expression()
-        body = parser.parse_statements(["name:endyield"], drop_needle=True)
+        body = parser.parse_statements(("name:endyield",), drop_needle=True)
 
         return nodes.CallBlock(
             self.call_method(
@@ -59,7 +62,9 @@ class YieldExtension(Extension):
             lineno=lineno,
         )
 
-    def _yield_support(self, looped_var, single_var_name, caller):
+    def _yield_support(
+        self, looped_var: Sequence[Any], single_var_name: str, caller: Callable[[], str]
+    ) -> str:
         """Support function for the yield tag.
 
         Sets the yield context in the environment with the given
