@@ -29,7 +29,6 @@ from typing import (
 from unicodedata import normalize
 
 from jinja2.loaders import FileSystemLoader
-from jinja2.sandbox import SandboxedEnvironment
 from pathspec import PathSpec
 from plumbum import ProcessExecutionError, colors
 from plumbum.cli.terminal import ask
@@ -45,7 +44,7 @@ from .errors import (
     UnsafeTemplateError,
     UserMessageError,
 )
-from .extensions import YieldExtension
+from .extensions import YieldEnvrionment, YieldExtension
 from .subproject import Subproject
 from .template import Task, Template
 from .tools import (
@@ -542,7 +541,7 @@ class Worker:
         return self.template.exclude + tuple(self.exclude)
 
     @cached_property
-    def jinja_env(self) -> SandboxedEnvironment:
+    def jinja_env(self) -> YieldEnvrionment:
         """Return a pre-configured Jinja environment.
 
         Respects template settings.
@@ -554,12 +553,9 @@ class Worker:
             YieldExtension,
         ]
         extensions = default_extensions + list(self.template.jinja_extensions)
-        # We want to minimize the risk of hidden malware in the templates
-        # so we use the SandboxedEnvironment instead of the regular one.
-        # Of course we still have the post-copy tasks to worry about, but at least
-        # they are more visible to the final user.
+
         try:
-            env = SandboxedEnvironment(
+            env = YieldEnvrionment(
                 loader=loader, extensions=extensions, **self.template.envops
             )
         except ModuleNotFoundError as error:

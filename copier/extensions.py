@@ -1,12 +1,30 @@
 """Jinja2 extension to add to the Jinja2 environment."""
 
+from __future__ import annotations
+
 from typing import Any, Callable, Sequence
 
 from jinja2 import nodes
-from jinja2.environment import Environment
 from jinja2.exceptions import UndefinedError
 from jinja2.ext import Extension
 from jinja2.parser import Parser
+from jinja2.sandbox import SandboxedEnvironment
+
+
+class YieldEnvrionment(SandboxedEnvironment):
+    """Jinja2 environment with a `yield_context` attribute.
+
+    We want to minimize the risk of hidden malware in the templates
+    so we use the SandboxedEnvironment instead of the regular one.
+    Of course we still have the post-copy tasks to worry about, but at least
+    they are more visible to the final user.
+    """
+
+    yield_context: dict[str, Any]
+
+    def __init__(self, *args: Any, **kwargs: Any):
+        super().__init__(*args, **kwargs)
+        self.extend(yield_context=dict())
 
 
 class YieldExtension(Extension):
@@ -37,10 +55,10 @@ class YieldExtension(Extension):
 
     tags = {"yield"}
 
-    def __init__(self, environment: Environment):
-        super().__init__(environment)
+    environment: YieldEnvrionment
 
-        environment.extend(yield_context=dict())
+    def __init__(self, environment: YieldEnvrionment):
+        super().__init__(environment)
 
     def parse(self, parser: Parser) -> nodes.Node:
         """Parse the `yield` tag."""
