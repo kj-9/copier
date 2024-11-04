@@ -735,7 +735,7 @@ class Worker:
         parts: tuple[str, ...],
         rendered_parts: tuple[str, ...],
         context: AnyByStrDict,
-    ) -> tuple[tuple[str], ...] | None:
+    ) -> tuple[tuple[str, ...], ...] | None:
         if not parts:
             return (rendered_parts,)
 
@@ -748,7 +748,7 @@ class Worker:
         if yield_context:
             keys = list(yield_context.keys())
             key = keys[0]
-            yielded_parts: tuple[tuple[str], ...] = ()
+            yielded_parts: tuple[tuple[str, ...], ...] = ()
 
             for v in yield_context[key]:
                 # join the `context`` with the current `yield_context`
