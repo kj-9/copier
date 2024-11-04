@@ -720,6 +720,16 @@ class Worker:
             dst_abspath = self.subproject.local_abspath / dst_relpath
             dst_abspath.mkdir(parents=True, exist_ok=True)
 
+    def _adjust_rendered_part(self, rendered_part: str) -> str:
+        """Adjust the rendered part if necessary.
+
+        If {{ _copier_conf.answers_file }} becomes the full path,
+        restore part to be just the end leaf.
+        """
+        if str(self.answers_relpath) == rendered_part:
+            return Path(rendered_part).name
+        return rendered_part
+
     def _render_parts(
         self,
         parts: tuple[str],
@@ -732,31 +742,40 @@ class Worker:
         part = parts[0]
         parts = parts[1:]
 
-        # Skip folder if any part is rendered as an empty string
         rendered_part = self._render_string(part, extra_context=context)
 
         yield_context = self.jinja_env.yield_context.copy()
         if yield_context:
             keys = list(yield_context.keys())
             key = keys[0]
-            parts_yields = tuple()
+            yielded_parts = tuple()
             for v in yield_context[key]:
                 # join the `context`` with the current `yield_context`
                 new_context = {**(context or {}), **{key: v}}
                 rendered_part = self._render_string(part, extra_context=new_context)
                 self.jinja_env.yield_context = {}
 
-                parts_yield = self._render_parts(
+                rendered_part = self._adjust_rendered_part(rendered_part)
+
+                yielded_part = self._render_parts(
                     parts, rendered_parts + (rendered_part,), new_context
                 )
-                parts_yields += parts_yield
 
-            return parts_yields
+                # Skip folder if any part is rendered as an empty string
+                if not yielded_part:
+                    return None
 
-        # if root, then append to the output
+                yielded_parts += yielded_part
 
-        else:
-            return self._render_parts(parts, rendered_parts + (rendered_part,), context)
+            return yielded_parts
+
+        # Skip folder if any part is rendered as an empty string
+        if not rendered_part:
+            return None
+
+        rendered_part = self._adjust_rendered_part(rendered_part)
+
+        return self._render_parts(parts, rendered_parts + (rendered_part,), context)
 
     def _render_path(self, relpath: Path) -> [Path]:
         """Render one relative path.
@@ -779,17 +798,7 @@ class Worker:
         if not rendered_parts:
             return []
 
-        # {{ _copier_conf.answers_file }} becomes the full path; in that case,
-        # restore part to be just the end leaf
-        # if str(self.answers_relpath) == rendered_part:
-        #    rendered_part = Path(rendered_part).name
-
-        # rendered_parts.append([rendered_part])
-
-        # Create Path objects for each combination
-        # combinations = product(*rendered_parts)
         results = [Path(*rendered_part) for rendered_part in rendered_parts]
-        # result = Path(*rendered_parts)
 
         if not is_template:
             results = [
