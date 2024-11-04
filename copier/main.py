@@ -619,7 +619,12 @@ class Worker:
                 else:
                     self._render_file(src_relpath, dst_relpath)
 
-    def _render_file(self, src_relpath: Path, dst_relpath: Path) -> None:
+    def _render_file(
+        self,
+        src_relpath: Path,
+        dst_relpath: Path,
+        extra_context: AnyByStrDict | None = None,
+    ) -> None:
         """Render one file.
 
         Args:
@@ -644,7 +649,9 @@ class Worker:
                 # suffix is empty, fallback to copy
                 new_content = src_abspath.read_bytes()
             else:
-                new_content = tpl.render(**self._render_context()).encode()
+                new_content = tpl.render(
+                    **self._render_context(), **(extra_context or {})
+                ).encode()
         else:
             new_content = src_abspath.read_bytes()
         dst_abspath = self.subproject.local_abspath / dst_relpath
@@ -730,7 +737,7 @@ class Worker:
         self,
         parts: tuple[str, ...],
         rendered_parts: tuple[str, ...],
-        context: AnyByStrDict,
+        extra_context: AnyByStrDict | None = None,
     ) -> tuple[tuple[str, ...], ...] | None:
         if not parts:
             return (rendered_parts,)
@@ -738,7 +745,10 @@ class Worker:
         part = parts[0]
         parts = parts[1:]
 
-        rendered_part = self._render_string(part, extra_context=context)
+        if not extra_context:
+            extra_context = {}
+
+        rendered_part = self._render_string(part, extra_context=extra_context)
 
         yield_context = self.jinja_env.yield_context.copy()
         if yield_context:
@@ -746,9 +756,9 @@ class Worker:
             key = keys[0]
             yielded_parts: tuple[tuple[str, ...], ...] = ()
 
-            for v in yield_context[key]:
+            for value in yield_context[key]:
                 # join the `context`` with the current `yield_context`
-                new_context = {**(context or {}), **{key: v}}
+                new_context = {**(extra_context or {}), **{key: value}}
                 rendered_part = self._render_string(part, extra_context=new_context)
                 self.jinja_env.yield_context = {}
 
@@ -772,7 +782,9 @@ class Worker:
 
         rendered_part = self._adjust_rendered_part(rendered_part)
 
-        return self._render_parts(parts, rendered_parts + (rendered_part,), context)
+        return self._render_parts(
+            parts, rendered_parts + (rendered_part,), extra_context
+        )
 
     def _render_path(self, relpath: Path) -> list[Path]:
         """Render one relative path.
@@ -790,7 +802,7 @@ class Worker:
             return []
         if self.template.templates_suffix and is_template:
             relpath = relpath.with_suffix("")
-        rendered_parts = self._render_parts(relpath.parts, tuple(), {})
+        rendered_parts = self._render_parts(relpath.parts, tuple())
 
         if not rendered_parts:
             return []
